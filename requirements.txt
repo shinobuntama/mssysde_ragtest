@@ -6,5 +6,9 @@ azure-functions
 azure-cosmos
 openai
 azure-storage-blob
-# pymupdf
+pymupdf4llm
+pandas
+openpyxl
+xlrd
+tabulate
 # pillow

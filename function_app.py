@@ -8,6 +8,7 @@ from azure.storage.blob import BlobServiceClient
 from util.cosmos_service import CosmosService
 from util.openai_service import AzureOpenAIService
 from domain.cosmos_document import CosmosDocument
+from util.document_parser import parse_pdf, parse_excel
 
 app = func.FunctionApp()
 
@@ -137,8 +138,6 @@ def EventGridTrigger(azeventgrid: func.EventGridEvent):
             logging.info(f'🚀 File Extension: {file_extension}')
 
             rag_docs = blob_data.content_as_bytes()
-            # 2026/11/09　Udemyに従いfile_contentを一時追加
-            file_content = rag_docs.decode('utf-8')
 
             # 同じblob_urlがCosmosDBに登録されている場合はCosmosDBのアイテムを削除
             query = f"SELECT * FROM c WHERE c.file_path = '{blob_url}'"
@@ -149,34 +148,37 @@ def EventGridTrigger(azeventgrid: func.EventGridEvent):
                 logging.info(
                     f'🚀 Deleted CosmosDB item: {item["file_name"]}')
 
-            # ファイルの内容をCosmosDBに登録
-            
-            if file_extension == ".txt" or file_extension == ".md":
+            # 拡張子ごとに (ページ番号, 本文) のリストを作る
+            ext = file_extension.lower()
+            if ext in (".txt", ".md"):
                 logging.info("🚀 Trigger blob file is Text or Markdown")
-                content = rag_docs.decode('utf-8')
-                # ファイル名をタイトルとして、コンテンツをMarkdown形式にする
-                content = '# ' + file_name + '\n\n' + content
+                pages = [(0, rag_docs.decode('utf-8'))]
+            elif ext == ".pdf":
+                logging.info("🚀 Trigger blob file is PDF")
+                pages = parse_pdf(rag_docs)
+            elif ext in (".xls", ".xlsx"):
+                logging.info("🚀 Trigger blob file is Excel")
+                pages = parse_excel(rag_docs, ext)
+            else:
+                logging.warning(
+                    f'❌ Unsupported file type: {file_extension}')
+                pages = []
 
-                # CosmosDBに登録するアイテムのオブジェクト
+            # ファイルの内容をCosmosDBに登録(PDFはページ単位、Excelはシート単位)
+            for page_number, body in pages:
                 cosmos_obj = CosmosDocument(
                     id=str(uuid.uuid4()),
                     file_name=file_name,
                     file_path=blob_url,
-                    page_number=0,
-                    content=content,
+                    page_number=page_number,
+                    # ファイル名をタイトルとして、コンテンツをMarkdown形式にする
+                    content=f'# {file_name}\n\n{body}',
                     vector=[],
                     keywords=[],
                     delete_flag=False,
                     vector_update_flag=True
                 )
                 cosmos_service.upsert_item(cosmos_obj.to_dict())
-            # 拡張子によって処理が異なることを想定したコーディングになっている。
-            # 必要ならば、file_extensionに従ってelifを追加して処理を記載する。
-            # elif file_extension == ".xls" or file_extension == ".xlsx":
-
-            else:
-                logging.warning(
-                    f'❌ Unsupported file type: {file_extension}')
 
         # event_typeがBlobDeletedの場合
         elif event_dict.get('event_type') == 'Microsoft.Storage.BlobDeleted':
