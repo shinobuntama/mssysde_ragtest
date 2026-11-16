@@ -8,7 +8,7 @@ from azure.storage.blob import BlobServiceClient
 from util.cosmos_service import CosmosService
 from util.openai_service import AzureOpenAIService
 from domain.cosmos_document import CosmosDocument
-from util.document_parser import parse_pdf, parse_excel
+from util.document_parser import parse_pdf, parse_excel, parse_docx
 
 app = func.FunctionApp()
 
@@ -159,12 +159,20 @@ def EventGridTrigger(azeventgrid: func.EventGridEvent):
             elif ext in (".xls", ".xlsx"):
                 logging.info("🚀 Trigger blob file is Excel")
                 pages = parse_excel(rag_docs, ext)
+            elif ext == ".docx":
+                logging.info("🚀 Trigger blob file is Word")
+                pages = parse_docx(rag_docs)
+            elif ext == ".doc":
+                # 旧形式(.doc)は python-docx で読めないため非対応
+                logging.warning(
+                    '❌ .doc is not supported. Please convert to .docx')
+                pages = []
             else:
                 logging.warning(
                     f'❌ Unsupported file type: {file_extension}')
                 pages = []
 
-            # ファイルの内容をCosmosDBに登録(PDFはページ単位、Excelはシート単位)
+            # ファイルの内容をCosmosDBに登録(PDFはページ単位、Excelはシート単位、Wordは1文書1件)
             for page_number, body in pages:
                 cosmos_obj = CosmosDocument(
                     id=str(uuid.uuid4()),

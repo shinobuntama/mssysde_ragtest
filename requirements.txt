@@ -11,4 +11,5 @@ pandas
 openpyxl
 xlrd
 tabulate
+python-docx
 # pillow
