@@ -1,4 +1,5 @@
 import io
+import os
 import re
 import pymupdf
 import pymupdf4llm
@@ -58,6 +59,33 @@ def _docx_table_to_markdown(table: Table) -> str:
              "|" + "|".join(["---"] * col_count) + "|"]
     lines += ["| " + " | ".join(r) + " |" for r in rows[1:]]
     return "\n".join(lines)
+
+
+def parse_image(data: bytes) -> list[tuple[int, str]]:
+    """画像(jpg/png/tiff等)をAzure AI Document IntelligenceのOCRでMarkdownに変換。
+
+    戻り値: [(1, 本文)]。文字が読み取れなかった場合は []
+    環境変数 DOCINTEL_ENDPOINT / DOCINTEL_KEY が必要。
+    """
+    # SDKの読み込みとクライアント作成は呼び出し時に行う(未設定でもアプリ起動は妨げない)
+    from azure.core.credentials import AzureKeyCredential
+    from azure.ai.documentintelligence import DocumentIntelligenceClient
+    from azure.ai.documentintelligence.models import DocumentContentFormat
+
+    endpoint = os.getenv("DOCINTEL_ENDPOINT")
+    key = os.getenv("DOCINTEL_KEY")
+    if not endpoint or not key:
+        raise RuntimeError(
+            "DOCINTEL_ENDPOINT / DOCINTEL_KEY が設定されていません(OCRに必要)")
+
+    client = DocumentIntelligenceClient(endpoint, AzureKeyCredential(key))
+    poller = client.begin_analyze_document(
+        "prebuilt-layout",
+        io.BytesIO(data),
+        output_content_format=DocumentContentFormat.MARKDOWN,
+    )
+    content = (poller.result().content or "").strip()
+    return [(1, content)] if content else []
 
 
 def parse_docx(data: bytes) -> list[tuple[int, str]]:

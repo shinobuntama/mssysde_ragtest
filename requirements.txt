@@ -12,4 +12,5 @@ openpyxl
 xlrd
 tabulate
 python-docx
+azure-ai-documentintelligence
 # pillow

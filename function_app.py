@@ -8,7 +8,7 @@ from azure.storage.blob import BlobServiceClient
 from util.cosmos_service import CosmosService
 from util.openai_service import AzureOpenAIService
 from domain.cosmos_document import CosmosDocument
-from util.document_parser import parse_pdf, parse_excel, parse_docx
+from util.document_parser import parse_pdf, parse_excel, parse_docx, parse_image
 from util.chunker import chunk_pages
 
 app = func.FunctionApp()
@@ -163,6 +163,10 @@ def EventGridTrigger(azeventgrid: func.EventGridEvent):
             elif ext == ".docx":
                 logging.info("🚀 Trigger blob file is Word")
                 pages = parse_docx(rag_docs)
+            elif ext in (".jpg", ".jpeg", ".png", ".tif", ".tiff"):
+                # 画像はOCR(Document Intelligence)で文字を読み取る
+                logging.info("🚀 Trigger blob file is Image (OCR)")
+                pages = parse_image(rag_docs)
             elif ext == ".doc":
                 # 旧形式(.doc)は python-docx で読めないため非対応
                 logging.warning(
