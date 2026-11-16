@@ -9,6 +9,7 @@ from util.cosmos_service import CosmosService
 from util.openai_service import AzureOpenAIService
 from domain.cosmos_document import CosmosDocument
 from util.document_parser import parse_pdf, parse_excel, parse_docx
+from util.chunker import chunk_pages
 
 app = func.FunctionApp()
 
@@ -172,8 +173,13 @@ def EventGridTrigger(azeventgrid: func.EventGridEvent):
                     f'❌ Unsupported file type: {file_extension}')
                 pages = []
 
-            # ファイルの内容をCosmosDBに登録(PDFはページ単位、Excelはシート単位、Wordは1文書1件)
-            for page_number, body in pages:
+            # チャンキング(見出し・表の構造を優先し、長い部分は文単位で分割)
+            # PDFは全ページを連結してから分割し、Excelはシートごとに独立して分割する
+            chunks = chunk_pages(pages, merge_pages=(ext == ".pdf"))
+            logging.info(f'🚀 Chunks: {len(chunks)} (from {len(pages)} page/sheet units)')
+
+            # チャンクごとにCosmosDBへ登録
+            for page_number, body in chunks:
                 cosmos_obj = CosmosDocument(
                     id=str(uuid.uuid4()),
                     file_name=file_name,
